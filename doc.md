@@ -19,7 +19,8 @@
 ```shell
 ./node_modules/.bin/babel src --out-dir lib
 ```
-将在 lib 文件夹中看到输出后的的代码:
+将在 lib 文件夹中看到输出后的的代码:  
+
 转换前：
 ```js
 import React from 'react';
@@ -44,4 +45,20 @@ const element = /*#__PURE__*/React.createElement("h1", {
   className: "title"
 }, "Hello Didact");
 ReactDOM.render(element, document.getElementById('root'));
+```
+
+element 值:
+![](./docimg/element-obj.jpg)
+
+其中比较重要的是这些数据：
+```js
+const element = {
+  type: "h1",
+  props: {
+    title: "foo",
+    className: "title",
+    children: "Hello Didact",
+  },
+}
+​
 ```
