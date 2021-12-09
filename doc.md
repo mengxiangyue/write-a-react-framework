@@ -609,7 +609,8 @@ function commitWork(fiber) {
   } else if (fiber.effectTag === "UPDATE" && fiber.dom !== null) {
     updateDom(fiber.dom, fiber.alternate.props, fiber.props)
   }
-  domParent.appendChild(fiber.dom)
+  // -----------------error tip: 在提交的代码中 tag: 1.5-update-dom-differently 应该删除这行代码---------------
+//   domParent.appendChild(fiber.dom)
   commitWork(fiber.child)
   commitWork(fiber.sibling)
 }
@@ -652,3 +653,86 @@ function updateDom(dom, prevProps, nextProps) {
     })
 }
 ```
+
+> check tag: 1.5-update-dom-differently
+> 在这个提交中有一个错误，这个文档里面搜索 `error tip` 能够找到
+
+### 函数组件
+更新 `element` 如下：
+```js
+function NameText(props) {
+  return (<h1>H1 {props.name}</h1>)
+}
+
+/** @jsx Didact.createElement */
+const element = (
+  <div id="foo" className="title">
+    <a>bar</a>
+    <b />
+    <NameText name="xiangyue"/>
+  </div>
+)
+```
+
+函数组件对应的fiber 的 type 就是这个函数，所以在生成 node 的时候需要进行一些特殊的处理。
+
+```js
+function performUnitOfWork(fiber) {
+  const isFunctionComponent =
+    fiber.type instanceof Function
+  if (isFunctionComponent) {
+    // 这里fiber type 就是函数，所以可以直接调用这个函数，然后生成对应的component。
+    const children = [fiber.type(fiber.props)]
+    reconcileChildren(fiber, children)
+  } else {
+    //1. 如果 fiber dom 不存在，则创建HTML node
+    if (!fiber.dom) {
+      fiber.dom = createDom(fiber)
+    }
+
+    //3. 创建新的fibers
+    const elements = fiber.props.children
+    reconcileChildren(fiber, elements)
+  }
+.......
+```
+
+对于 commit 阶段也需要进行特殊处理
+```js
+function commitWork(fiber) {
+  if (!fiber) {
+    return 
+  }
+  
+  // 对于函数组件，需要递归查找到父dom节点
+  let domParentFiber = fiber.parent
+  while (!domParentFiber.dom) {
+    domParentFiber = domParentFiber.parent
+  }
+  const domParent = domParentFiber.dom
+
+  if (fiber.effectTag === "PLACEMENT" && fiber.dom !== null) {
+    domParent.appendChild(fiber.dom)
+  } else if(fiber.effectTag === "DELETION") {
+    // 在删除的时候也需要特殊处理
+    commitDeletion(fiber, domParent)
+  } else if (fiber.effectTag === "UPDATE" && fiber.dom !== null) {
+    updateDom(fiber.dom, fiber.alternate.props, fiber.props)
+  }
+
+  commitWork(fiber.child)
+  commitWork(fiber.sibling)
+}
+
+function commitDeletion(fiber, domParent) {
+  if (fiber.dom) {
+    domParent.removeChild(fiber.dom)
+  } else {
+    commitDeletion(fiber.child, domParent)
+  }
+}
+```
+
+具体的修改查看提交tag 1.6-function-component.
+
+### Hooks

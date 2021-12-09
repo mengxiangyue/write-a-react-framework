@@ -51,17 +51,33 @@ function commitWork(fiber) {
   if (!fiber) {
     return 
   }
-  const domParent = fiber.parent.dom
+  
+  // 对于函数组件，需要递归查找到父dom节点
+  let domParentFiber = fiber.parent
+  while (!domParentFiber.dom) {
+    domParentFiber = domParentFiber.parent
+  }
+  const domParent = domParentFiber.dom
+
   if (fiber.effectTag === "PLACEMENT" && fiber.dom !== null) {
     domParent.appendChild(fiber.dom)
   } else if(fiber.effectTag === "DELETION") {
-    domParent.removeChild(fiber.dom)
+    // 在删除的时候也需要特殊处理
+    commitDeletion(fiber, domParent)
   } else if (fiber.effectTag === "UPDATE" && fiber.dom !== null) {
     updateDom(fiber.dom, fiber.alternate.props, fiber.props)
   }
-  domParent.appendChild(fiber.dom)
+
   commitWork(fiber.child)
   commitWork(fiber.sibling)
+}
+
+function commitDeletion(fiber, domParent) {
+  if (fiber.dom) {
+    domParent.removeChild(fiber.dom)
+  } else {
+    commitDeletion(fiber.child, domParent)
+  }
 }
 
 const isEvent = key => key.startsWith("on")
@@ -142,70 +158,22 @@ requestIdleCallback(workLoop)
 
 // 执行一个任务 并且返回后续需要执行的任务
 function performUnitOfWork(fiber) {
-  //1. 如果 fiber dom 不存在，则创建HTML node
-  if (!fiber.dom) {
-    fiber.dom = createDom(fiber)
+  const isFunctionComponent =
+    fiber.type instanceof Function
+  if (isFunctionComponent) {
+    // 这里fiber type 就是函数，所以可以直接调用这个函数，然后生成对应的component。
+    const children = [fiber.type(fiber.props)]
+    reconcileChildren(fiber, children)
+  } else {
+    //1. 如果 fiber dom 不存在，则创建HTML node
+    if (!fiber.dom) {
+      fiber.dom = createDom(fiber)
+    }
+
+    //3. 创建新的fibers
+    const elements = fiber.props.children
+    reconcileChildren(fiber, elements)
   }
-
-  //2. 如果其有 parent，需要将其添加到父节点
-  // if (fiber.parent) {
-  //   fiber.parent.dom.appendChild(fiber.dom)
-  // }
-
-  //3. 创建新的fibers
-  const elements = fiber.props.children
-  // 将会抽取成单独的方法 --------------------start------------
-  // reconcileChildren(fiber, elements)
-  const wipFiber = fiber
-  let index = 0;
-  let oldFiber = wipFiber.alternate && wipFiber.alternate.child
-  let prevSibling = null
-
-  // 构建当前fiber 和其子 fiber 的关系
-  while (index < elements.length || oldFiber != null) {
-    const element = elements[index]
-    let newFiber = null
-
-    const sameType = oldFiber && element && element.type === oldFiber.type
-    // 如果类型相同只需要更新props
-    if (sameType) {
-      newFiber = {
-        type: oldFiber.type,
-        props: element.props,
-        dom: oldFiber.dom,
-        parent: wipFiber,
-        alternate: oldFiber,
-        effectTag: "UPDATE", //标注需要更新props
-      }
-    }
-    // 添加这个node
-    if (element && !sameType) {
-      newFiber = {
-        type: element.type,
-        props: element.props,
-        dom: null,
-        parent: wipFiber,
-        alternate: null,
-        effectTag: "PLACEMENT",
-      }
-    }
-    // 删除 old fiber node
-    if (oldFiber && !sameType) {
-      oldFiber.effectTag = "DELETION"
-      deletions.push(oldFiber)
-    }
-
-    // 将根据children创建的第一个fiber，设置为当前fiber的child
-    if (index == 0) {
-      wipFiber.child = newFiber
-    } else {
-      // 将 new fiber 设置为上一个fiber 的 sibling
-      prevSibling.sibling = newFiber
-    }
-    prevSibling = newFiber
-    index++
-  }
-  // 将会抽取成单独的方法 --------------------end------------
   
   // 4. 返回后续需要执行的任务
   if (fiber.child) {
@@ -277,13 +245,17 @@ const Didact = {
   render
 }
 
+function NameText(props) {
+  return (<h1>H1 {props.name}</h1>)
+}
+
 /** @jsx Didact.createElement */
 const element = (
   <div id="foo" className="title">
     <a>bar</a>
     <b />
+    <NameText name="xiangyue"/>
   </div>
 )
-
 const container = document.getElementById("root");
 Didact.render(element, container);
