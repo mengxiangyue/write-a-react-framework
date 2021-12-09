@@ -230,7 +230,7 @@ const element = /*#__PURE__*/Didact.createElement("div", {
 ```js
 /** @jsx Didact.createElement */
 const element = (
-  <div id="foo">
+  <div id="foo" className="title">>
     <a>bar</a>
     <b />
   </div>
@@ -239,3 +239,41 @@ const element = (
 > `@jsx Didact.createElement` 告诉 babel 使用 `Didact.createElement` 转换 JSX
 
 运行 `./node_modules/.bin/babel src --out-dir lib`, 然后查看 `lib/index.js` 能够发现已经调用了我们写的方法了
+
+> check tag: 1.1-jsx-config
+
+#### 重写 `Render` 方法
+到目前为止项目是无法运行的，错误在上面有。
+
+```js
+function render(element, container) {
+  // 根据配置创建 HTML node, 如果 type 是 TEXT_ELEMENT 需要特殊处理
+  const dom = element.type == "TEXT_ELEMENT" 
+    ? document.createTextNode("")
+    : document.createElement(element.type)
+  
+  // 获取除 children 以外的所有的属性，并将其赋值给新创建的 HTML node
+  Object.keys(element.props)
+    .filter(key => key !== "children")
+    .forEach(name => {
+      dom[name] = element.props[name]
+    })
+  
+  // 递归创建 HTML node
+  element.props.children.forEach(child => render(child, dom) )
+
+  // 将创建的 node 添加到 container node 上
+  container.appendChild(dom)
+}
+
+const Didact = {
+  createElement,
+  // 并将 render 方法配置到这里
+  render 
+}
+```
+
+替换 `React.render(element, container);` 为 `Didact.render(element, container);`。
+
+这时候需要在 `index.js` 文件的 `import xxxxx` 之前加入 `/** @jsxRuntime classic */`。 
+重新运行代码，能够看到形同的输出
