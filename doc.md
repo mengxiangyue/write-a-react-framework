@@ -423,3 +423,57 @@ function performUnitOfWork(fiber) {
   }
 }
 ```
+> check tag: 1.3-fiber-render
+
+### Render 和 提交阶段
+目前每次创建一个 node 就添加到当前的页面的 DOM 中，但是浏览器可能会打断这个过程，这时候用户就会看到不完整的UI，这个不是我们希望的，所以我们希望在所有的 node 都创建好了后，同时更新到当前的页面中。
+
+删除 `function performUnitOfWork(fiber)` 的如下代码：
+```js
+  if (fiber.parent) {
+    fiber.parent.dom.appendChild(fiber.dom)
+  }
+```
+
+同时创建 `wipRoot` 记录当前正在渲染的 fiber, 并修改 `render` 方法。
+```js
+function render(element, container) {
+  wipRoot = {
+    dom: container,
+    props: {
+      children: [element]
+    }
+  }
+  nextUnitWOfWork = wipRoot
+}
+
+// 需要执行的任务
+let nextUnitWOfWork = null;
+let wipRoot = null;
+```
+
+最后需要在所有的任务都完成后提交所有的node, 修改 `function workLoop(deadline)` 方法如下：
+```js
+// 执行任务的循环 每一次调用的时候设置 执行时间
+function workLoop(deadline) {
+  let shouldYield = false
+  while (nextUnitWOfWork && !shouldYield) {
+    nextUnitWOfWork = performUnitOfWork(nextUnitWOfWork)
+    shouldYield = deadline.timeRemaining() < 1
+  }
+  //-------------------------new add start--------------------
+  // 如果没有后续的任务了 提交
+  if (!nextUnitWOfWork && wipRoot) {
+    commitRoot()
+  }
+  //-------------------------new add end--------------------
+  requestIdleCallback(workLoop)
+}
+```
+
+添加方法：
+```js
+function commitRoot() {
+
+}
+```

@@ -40,17 +40,23 @@ function createDom(fiber) {
   return dom  
 }
 
+function commitRoot() {
+
+}
+
 function render(element, container) {
-  nextUnitWOfWork = {
+  wipRoot = {
     dom: container,
     props: {
       children: [element]
     }
   }
+  nextUnitWOfWork = wipRoot
 }
 
 // 需要执行的任务
 let nextUnitWOfWork = null;
+let wipRoot = null;
 
 // 执行任务的循环 每一次调用的时候设置 执行时间
 function workLoop(deadline) {
@@ -58,6 +64,10 @@ function workLoop(deadline) {
   while (nextUnitWOfWork && !shouldYield) {
     nextUnitWOfWork = performUnitOfWork(nextUnitWOfWork)
     shouldYield = deadline.timeRemaining() < 1
+  }
+  // 如果没有后续的任务了 提交
+  if (!nextUnitWOfWork && wipRoot) {
+    commitRoot()
   }
   requestIdleCallback(workLoop)
 }
@@ -73,9 +83,9 @@ function performUnitOfWork(fiber) {
   }
 
   //2. 如果其有 parent，需要将其添加到父节点
-  if (fiber.parent) {
-    fiber.parent.dom.appendChild(fiber.dom)
-  }
+  // if (fiber.parent) {
+  //   fiber.parent.dom.appendChild(fiber.dom)
+  // }
 
   //3. 创建新的fibers
   const elements = fiber.props.children
