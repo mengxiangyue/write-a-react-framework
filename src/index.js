@@ -41,22 +41,87 @@ function createDom(fiber) {
 }
 
 function commitRoot() {
-
+  deletions.forEach(commitWork)
+  commitWork(wipRoot.child)
+  currentRoot = wipRoot
+  wipRoot = null
 }
+
+function commitWork(fiber) {
+  if (!fiber) {
+    return 
+  }
+  const domParent = fiber.parent.dom
+  if (fiber.effectTag === "PLACEMENT" && fiber.dom !== null) {
+    domParent.appendChild(fiber.dom)
+  } else if(fiber.effectTag === "DELETION") {
+    domParent.removeChild(fiber.dom)
+  } else if (fiber.effectTag === "UPDATE" && fiber.dom !== null) {
+    updateDom(fiber.dom, fiber.alternate.props, fiber.props)
+  }
+  domParent.appendChild(fiber.dom)
+  commitWork(fiber.child)
+  commitWork(fiber.sibling)
+}
+
+const isEvent = key => key.startsWith("on")
+const isProperty = key => key !== 'children'
+// const isNew = (prev, next) => key => prev(key) !== next[key]
+// const isGone = (prev, next) => key => !(key in next)
+function updateDom(dom, prevProps, nextProps) {
+  // 删除 Event
+  Object.keys(prevProps)
+    .filter(isEvent)
+    .filter(key => !(key in nextProps) || prevProps[key] !== nextProps[key])
+    .forEach(name => {
+      const eventType = name.toLowerCase().substring(2)
+      dom.removeEventListener(eventType, prevProps[name])
+    })
+  // 添加Event
+  Object.keys(nextProps) 
+    .filter(isEvent) 
+    .filter(key => prevProps[key] !== nextProps[key])
+    .forEach(name => {
+      const eventType = name.toLowerCase().substring(2)
+      dom.addEventListener(eventType, prevProps[name])
+    })
+  // 删除旧的
+  Object.keys(prevProps)
+    .filter(isProperty)
+    .filter(key => !(key in nextProps))
+    .forEach(name => {
+      dom[name] = ''
+    })
+  
+  // 设置新的属性
+  Object.keys(nextProps)
+    .filter(isProperty) 
+    .filter(key => prevProps[key] !== nextProps[key])
+    .forEach(name => {
+      dom[name] = nextProps[name]
+    })
+}
+
 
 function render(element, container) {
   wipRoot = {
     dom: container,
     props: {
       children: [element]
-    }
+    },
+    alternate: currentRoot
   }
+  deletions = []
   nextUnitWOfWork = wipRoot
 }
 
 // 需要执行的任务
 let nextUnitWOfWork = null;
+// 已经提交渲染完成的root fiber
+let currentRoot = null;
 let wipRoot = null;
+// 需要删除的 fiber
+let deletions = [];
 
 // 执行任务的循环 每一次调用的时候设置 执行时间
 function workLoop(deadline) {
@@ -89,23 +154,50 @@ function performUnitOfWork(fiber) {
 
   //3. 创建新的fibers
   const elements = fiber.props.children
+  // 将会抽取成单独的方法 --------------------start------------
+  // reconcileChildren(fiber, elements)
+  const wipFiber = fiber
   let index = 0;
+  let oldFiber = wipFiber.alternate && wipFiber.alternate.child
   let prevSibling = null
 
   // 构建当前fiber 和其子 fiber 的关系
-  while (index < elements.length) {
+  while (index < elements.length || oldFiber != null) {
     const element = elements[index]
+    let newFiber = null
 
-    const newFiber = {
-      type: element.type,
-      props: element.props,
-      parent: fiber,
-      dom: null
+    const sameType = oldFiber && element && element.type === oldFiber.type
+    // 如果类型相同只需要更新props
+    if (sameType) {
+      newFiber = {
+        type: oldFiber.type,
+        props: element.props,
+        dom: oldFiber.dom,
+        parent: wipFiber,
+        alternate: oldFiber,
+        effectTag: "UPDATE", //标注需要更新props
+      }
+    }
+    // 添加这个node
+    if (element && !sameType) {
+      newFiber = {
+        type: element.type,
+        props: element.props,
+        dom: null,
+        parent: wipFiber,
+        alternate: null,
+        effectTag: "PLACEMENT",
+      }
+    }
+    // 删除 old fiber node
+    if (oldFiber && !sameType) {
+      oldFiber.effectTag = "DELETION"
+      deletions.push(oldFiber)
     }
 
     // 将根据children创建的第一个fiber，设置为当前fiber的child
     if (index == 0) {
-      fiber.child = newFiber
+      wipFiber.child = newFiber
     } else {
       // 将 new fiber 设置为上一个fiber 的 sibling
       prevSibling.sibling = newFiber
@@ -113,6 +205,8 @@ function performUnitOfWork(fiber) {
     prevSibling = newFiber
     index++
   }
+  // 将会抽取成单独的方法 --------------------end------------
+  
   // 4. 返回后续需要执行的任务
   if (fiber.child) {
     return fiber.child
@@ -124,6 +218,57 @@ function performUnitOfWork(fiber) {
       return nextFiber.sibling
     }
     nextFiber = nextFiber.parent
+  }
+}
+
+function reconcileChildren(wipFiber, elements) {
+  let index = 0;
+  let oldFiber = wipFiber.alternate && wipFiber.alternate.child
+  let prevSibling = null
+
+  // 构建当前fiber 和其子 fiber 的关系
+  while (index < elements.length || oldFiber != null) {
+    const element = elements[index]
+    let newFiber = null
+
+    const sameType = oldFiber && element && element.type === oldFiber.type
+    // 如果类型相同只需要更新props
+    if (sameType) {
+      newFiber = {
+        type: oldFiber.type,
+        props: element.props,
+        dom: oldFiber.dom,
+        parent: wipFiber,
+        alternate: oldFiber,
+        effectTag: "UPDATE", //标注需要更新props
+      }
+    }
+    // 添加这个node
+    if (element && !sameType) {
+      newFiber = {
+        type: element.type,
+        props: element.props,
+        dom: null,
+        parent: wipFiber,
+        alternate: null,
+        effectTag: "PLACEMENT",
+      }
+    }
+    // 删除 old fiber node
+    if (oldFiber && !sameType) {
+      oldFiber.effectTag = "DELETION"
+      deletions.push(oldFiber)
+    }
+
+    // 将根据children创建的第一个fiber，设置为当前fiber的child
+    if (index == 0) {
+      wipFiber.child = newFiber
+    } else {
+      // 将 new fiber 设置为上一个fiber 的 sibling
+      prevSibling.sibling = newFiber
+    }
+    prevSibling = newFiber
+    index++
   }
 }
 

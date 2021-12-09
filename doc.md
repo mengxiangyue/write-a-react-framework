@@ -477,3 +477,178 @@ function commitRoot() {
 
 }
 ```
+
+> check tag: 1.4-add-commit-phase
+
+### 按需更新 Fiber
+在每次更新的时候可以选择只更新变化的部分。首先需要存储每个 fiber 对应的老的 fiber，这里使用 `alternate` 表示。
+每次在计算 fiber 的时候通过与老的fiber 进行比较，然后确定对应的操作。这里有三种，使用 `effectTag` 表示：
+- UPDATE 更新对应的属性和事件
+- PLACEMENT 添加新的 dom
+- DELETION 删除已经的 dom，对于需要删除的 dom，需要存储到全局变量中，这里使用的是 `let deletions = []`
+
+首先添加如下两个变量
+```js
+// 已经提交渲染完成的root fiber
+let currentRoot = null;
+// 需要删除的 fiber
+let deletions = [];
+```
+
+fiber 计算：  
+下面使用这个标注的代码为计算方法
+```
+// 将会抽取成单独的方法 --------------------start------------
+                          ......
+// 将会抽取成单独的方法 --------------------end------------
+```
+
+```js
+// 执行一个任务 并且返回后续需要执行的任务
+function performUnitOfWork(fiber) {
+  //1. 如果 fiber dom 不存在，则创建HTML node
+  if (!fiber.dom) {
+    fiber.dom = createDom(fiber)
+  }
+
+  //2. 如果其有 parent，需要将其添加到父节点
+  // if (fiber.parent) {
+  //   fiber.parent.dom.appendChild(fiber.dom)
+  // }
+
+  //3. 创建新的fibers
+  const elements = fiber.props.children
+  // 将会抽取成单独的方法 --------------------start------------
+  // reconcileChildren(fiber, elements)
+  const wipFiber = fiber
+  let index = 0;
+  let oldFiber = wipFiber.alternate && wipFiber.alternate.child
+  let prevSibling = null
+
+  // 构建当前fiber 和其子 fiber 的关系
+  while (index < elements.length || oldFiber != null) {
+    const element = elements[index]
+    let newFiber = null
+
+    const sameType = oldFiber && element && element.type === oldFiber.type
+    // 如果类型相同只需要更新props
+    if (sameType) {
+      newFiber = {
+        type: oldFiber.type,
+        props: element.props,
+        dom: oldFiber.dom,
+        parent: wipFiber,
+        alternate: oldFiber,
+        effectTag: "UPDATE", //标注需要更新props
+      }
+    }
+    // 添加这个node
+    if (element && !sameType) {
+      newFiber = {
+        type: element.type,
+        props: element.props,
+        dom: null,
+        parent: wipFiber,
+        alternate: null,
+        effectTag: "PLACEMENT",
+      }
+    }
+    // 删除 old fiber node
+    if (oldFiber && !sameType) {
+      oldFiber.effectTag = "DELETION"
+      deletions.push(oldFiber)
+    }
+
+    // 将根据children创建的第一个fiber，设置为当前fiber的child
+    if (index == 0) {
+      wipFiber.child = newFiber
+    } else {
+      // 将 new fiber 设置为上一个fiber 的 sibling
+      prevSibling.sibling = newFiber
+    }
+    prevSibling = newFiber
+    index++
+  }
+  // 将会抽取成单独的方法 --------------------end------------
+  
+  // 4. 返回后续需要执行的任务
+  if (fiber.child) {
+    return fiber.child
+  }
+  let nextFiber = fiber
+  // 寻找当前fiber及其父fiber路径上面的姊妹fiber，当运行到这里的时候，一定是到达了root到该fiber路径的叶子fiber
+  while (nextFiber) {
+    if (nextFiber.sibling) {
+      return nextFiber.sibling
+    }
+    nextFiber = nextFiber.parent
+  }
+}
+```
+
+更新对应的dom
+
+更新 `commitRoot`
+```js
+function commitRoot() {
+  deletions.forEach(commitWork)
+  commitWork(wipRoot.child)
+  currentRoot = wipRoot
+  wipRoot = null
+}
+
+function commitWork(fiber) {
+  if (!fiber) {
+    return 
+  }
+  const domParent = fiber.parent.dom
+  if (fiber.effectTag === "PLACEMENT" && fiber.dom !== null) {
+    domParent.appendChild(fiber.dom)
+  } else if(fiber.effectTag === "DELETION") {
+    domParent.removeChild(fiber.dom)
+  } else if (fiber.effectTag === "UPDATE" && fiber.dom !== null) {
+    updateDom(fiber.dom, fiber.alternate.props, fiber.props)
+  }
+  domParent.appendChild(fiber.dom)
+  commitWork(fiber.child)
+  commitWork(fiber.sibling)
+}
+
+const isEvent = key => key.startsWith("on")
+const isProperty = key => key !== 'children'
+// const isNew = (prev, next) => key => prev(key) !== next[key]
+// const isGone = (prev, next) => key => !(key in next)
+function updateDom(dom, prevProps, nextProps) {
+  // 删除 Event
+  Object.keys(prevProps)
+    .filter(isEvent)
+    .filter(key => !(key in nextProps) || prevProps[key] !== nextProps[key])
+    .forEach(name => {
+      const eventType = name.toLowerCase().substring(2)
+      dom.removeEventListener(eventType, prevProps[name])
+    })
+  // 添加Event
+  Object.keys(nextProps) 
+    .filter(isEvent) 
+    .filter(key => prevProps[key] !== nextProps[key])
+    .forEach(name => {
+      const eventType = name.toLowerCase().substring(2)
+      dom.addEventListener(eventType, prevProps[name])
+    })
+  // 删除旧的
+  Object.keys(prevProps)
+    .filter(isProperty)
+    .filter(key => !(key in nextProps))
+    .forEach(name => {
+      dom[name] = ''
+    })
+  
+  // 设置新的属性
+  Object.keys(nextProps)
+    .filter(isProperty) 
+    .filter(key => prevProps[key] !== nextProps[key])
+    .forEach(name => {
+      dom[name] = nextProps[name]
+    })
+}
+```
