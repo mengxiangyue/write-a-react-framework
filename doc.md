@@ -736,3 +736,48 @@ function commitDeletion(fiber, domParent) {
 具体的修改查看提交tag 1.6-function-component.
 
 ### Hooks
+这里以 `useState` 为例子进行介绍。
+每个函数组件在创建 fiber 的时候，都会调用 `useState` 在调用的时候会添加 hook 属性。并且把所有的action放到一个队列中，在每次重新渲染的时候会调用原来的action获取最新的状态，然后创建一个新的队列。
+
+```js
+// 在开始渲染函数组件的时候，会设置成对应的值（function performUnitOfWork(fiber) 中）
+let wipFiber = null
+let hookIndex = null
+
+// useState 每调用一次，hookIndex 会加一，由于代码编译完成后，在一个函数组件中调用 useState 的顺序是固定的，所以这种处理应该没问题
+// 问题：如果useState 是被 if 包裹，有些时候不调用，会怎样？这样处理就会出现问题。
+// React Hook 需要以完全相同的顺序进行调用，出于函数顶层，不能在 if、循环、class中使用Hook。
+function useState(initial) {
+  // 在后续渲染过程中先获取原来的 hook
+  const oldHook = wipFiber.alternate && wipFiber.alternate.hooks && wipFiber.alternate.hooks[hookIndex]
+  // 创建新的 hook，保留原来状态的值，并清空队列
+  const hook = {
+    state: oldHook ? oldHook.state : initial,
+    queue: [],
+  }
+  // 执行所有的队列中的action，获取最新的状态
+  const actions = oldHook ? oldHook.queue : []
+  actions.forEach(action => {
+    hook.state = action(hook.state)
+  })
+  
+  // 返回更新方法
+  const setState = action => {
+    hook.queue.push(action)
+    wipRoot = {
+      dom: currentRoot.dom,
+      props: currentRoot.props,
+      alternate: currentRoot
+    }
+    // 设置下一次更新的任务，然后等待浏览器调用
+    nextUnitWOfWork = wipRoot
+    deletions = []
+  }
+  wipFiber.hooks.push(hook)
+  hookIndex++
+  return [hook.state, setState]
+}
+```
+
+> check tag: 1.7-hook
+> 同时里面修复了几个bug

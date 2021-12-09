@@ -30,12 +30,7 @@ function createDom(fiber) {
     ? document.createTextNode("")
     : document.createElement(fiber.type)
   
-  // 获取除 children 以外的所有的属性，并将其赋值给新创建的 HTML node
-  Object.keys(fiber.props)
-    .filter(key => key !== "children")
-    .forEach(name => {
-      dom[name] = fiber.props[name]
-    })
+  updateDom(dom, {}, fiber.props)
   
   return dom  
 }
@@ -99,7 +94,7 @@ function updateDom(dom, prevProps, nextProps) {
     .filter(key => prevProps[key] !== nextProps[key])
     .forEach(name => {
       const eventType = name.toLowerCase().substring(2)
-      dom.addEventListener(eventType, prevProps[name])
+      dom.addEventListener(eventType, nextProps[name])
     })
   // 删除旧的
   Object.keys(prevProps)
@@ -161,6 +156,9 @@ function performUnitOfWork(fiber) {
   const isFunctionComponent =
     fiber.type instanceof Function
   if (isFunctionComponent) {
+    wipFiber = fiber
+    hookIndex = 0
+    wipFiber.hooks = []
     // 这里fiber type 就是函数，所以可以直接调用这个函数，然后生成对应的component。
     const children = [fiber.type(fiber.props)]
     reconcileChildren(fiber, children)
@@ -228,6 +226,7 @@ function reconcileChildren(wipFiber, elements) {
       deletions.push(oldFiber)
     }
 
+    
     // 将根据children创建的第一个fiber，设置为当前fiber的child
     if (index == 0) {
       wipFiber.child = newFiber
@@ -237,16 +236,60 @@ function reconcileChildren(wipFiber, elements) {
     }
     prevSibling = newFiber
     index++
+    // 这个循环里面都是 sibling 的关系，所以这里也需要更新
+    if (oldFiber) {
+      oldFiber = oldFiber.sibling
+    }
   }
 }
 
 const Didact = {
   createElement,
-  render
+  render,
+  useState,
+}
+
+// 在开始渲染函数组件的时候，会设置成对应的值（function performUnitOfWork(fiber) 中）
+let wipFiber = null
+let hookIndex = null
+
+// useState 每调用一次，hookIndex 会加一，由于代码编译完成后，在一个函数组件中调用 useState 的顺序是固定的，所以这种处理应该没问题
+// 问题：如果useState 是被 if 包裹，有些时候不调用，会怎样？这样处理就会出现问题。
+// React Hook 需要以完全相同的顺序进行调用，出于函数顶层，不能在 if、循环、class中使用Hook。
+function useState(initial) {
+  // 在后续渲染过程中先获取原来的 hook
+  const oldHook = wipFiber.alternate && wipFiber.alternate.hooks && wipFiber.alternate.hooks[hookIndex]
+  // 创建新的 hook，保留原来状态的值，并清空队列
+  const hook = {
+    state: oldHook ? oldHook.state : initial,
+    queue: [],
+  }
+  // 执行所有的队列中的action，获取最新的状态
+  const actions = oldHook ? oldHook.queue : []
+  actions.forEach(action => {
+    hook.state = action(hook.state)
+  })
+  
+  // 返回更新方法
+  const setState = action => {
+    hook.queue.push(action)
+    wipRoot = {
+      dom: currentRoot.dom,
+      props: currentRoot.props,
+      alternate: currentRoot
+    }
+    // 设置下一次更新的任务，然后等待浏览器调用
+    nextUnitWOfWork = wipRoot
+    deletions = []
+  }
+  wipFiber.hooks.push(hook)
+  hookIndex++
+  return [hook.state, setState]
 }
 
 function NameText(props) {
-  return (<h1>H1 {props.name}</h1>)
+  const [state, setState] = Didact.useState(1)
+  return (<h1 onClick={() => setState(c => c + 1)}>H1 {props.name} {state}</h1>)
 }
 
 /** @jsx Didact.createElement */
