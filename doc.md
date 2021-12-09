@@ -50,6 +50,7 @@ ReactDOM.render(element, document.getElementById('root'));
 element 值:
 ![](./docimg/element-obj.jpg)
 
+### 替换 `render` 方法
 其中比较重要的是这些数据：
 ```js
 const element = {
@@ -62,3 +63,36 @@ const element = {
 }
 ​
 ```
+
+将 `index.js` 中的 `element` 替换为上面的内容，然后运行在页面上会看到错误：
+```
+Error: Objects are not valid as a React child (found: object with keys {type, props}). If you meant to render a collection of children, use an array instead.
+▶ 19 stack frames were collapsed.
+Module.<anonymous>
+src/index.js:14
+  11 |     children: "Hello Didact",
+  12 |   },
+  13 | }
+> 14 | ReactDOM.render(
+  15 |   element,
+  16 |   document.getElementById('root')
+  17 | );
+```
+
+由于我们省略了许多字段，所以 `ReactDOM.render` 不能正常工作， 现在需要自己实现render功能。
+
+```js
+const container = document.getElementById("root")
+
+const node = document.createElement(element.type)
+node["title"] = element.props.title
+node['className'] = element.props.className
+
+const text = document.createTextNode("")
+text["nodeValue"] = element.props.children
+
+node.appendChild(text)
+container.appendChild(node)
+```
+
+重新运行项目，能够看到结果输出跟原来是相同的。
