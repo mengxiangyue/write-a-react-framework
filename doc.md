@@ -96,3 +96,122 @@ container.appendChild(node)
 ```
 
 重新运行项目，能够看到结果输出跟原来是相同的。
+
+
+## 新项目
+修改 `index.js` 文件如下：
+```js
+import React from 'react';
+import ReactDOM from 'react-dom';
+import './index.css';
+
+const element = (
+  <div id="foo" className="title">
+    <a>bar</a>
+    <b />
+  </div>
+)
+const container = document.getElementById("root")
+ReactDOM.render(element, container)
+```
+
+运行 `./node_modules/.bin/babel src --out-dir lib`, 编译后文件内容如下，并使用其替换 `index.js`,
+```js
+import React from 'react';
+import ReactDOM from 'react-dom';
+import './index.css';
+const element = /*#__PURE__*/React.createElement("div", {
+  id: "foo",
+  className: "title"
+}, /*#__PURE__*/React.createElement("a", null, "bar"), /*#__PURE__*/React.createElement("b", null));
+const container = document.getElementById("root");
+ReactDOM.render(element, container);
+```
+
+目前还是能够正常运行。 
+
+#### 创建我们的 `createElement` 方法
+在 `index.js` 文件中添加
+```js
+// 返回数据模型
+function createElement(type, props, ...children) {
+  return {
+    type,
+    props: {
+      ...props,
+      children,
+    },
+  }
+}
+```
+
+由于 `children` 属性中可能含有字符串或者数字，对于这些需要进行特殊的处理，所以上面的代码需要修改为：
+```js
+function createElement(type, props, ...children) {
+  return {
+    type,
+    props: {
+      ...props,
+      children: children.map(child => typeof child === 'object' ? child : createTextElement(child) )
+    },
+  }
+}
+
+function createTextElement(text) {
+  return {
+    type: 'TEXT_ELEMENT',
+    props: {
+      nodeValue: text,
+      children: []
+    }
+  }
+}
+```
+
+#### 替换 React.createElement
+为了让这个更像一个框架，我们给它起一个名字，并且替换为我们自己的 `createElement` 方法。
+```js
+const Didact = {
+  createElement,
+}
+```
+
+到目前为止 `index.js` 文件内容如下：
+```js
+import React from 'react';
+import ReactDOM from 'react-dom';
+import './index.css';
+
+
+// 返回数据模型
+function createElement(type, props, ...children) {
+  return {
+    type,
+    props: {
+      ...props,
+      children: children.map(child => typeof child === 'object' ? child : createTextElement(child) )
+    },
+  }
+}
+
+function createTextElement(text) {
+  return {
+    type: 'TEXT_ELEMENT',
+    props: {
+      nodeValue: text,
+      children: []
+    }
+  }
+}
+
+const Didact = {
+  createElement,
+}
+
+const element = /*#__PURE__*/Didact.createElement("div", {
+  id: "foo",
+  className: "title"
+}, /*#__PURE__*/Didact.createElement("a", null, "bar"), /*#__PURE__*/Didact.createElement("b", null));
+const container = document.getElementById("root");
+ReactDOM.render(element, container);
+```
