@@ -130,7 +130,7 @@ ReactDOM.render(element, container);
 
 目前还是能够正常运行。 
 
-#### 创建我们的 `createElement` 方法
+### 创建我们的 `createElement` 方法
 在 `index.js` 文件中添加
 ```js
 // 返回数据模型
@@ -168,7 +168,7 @@ function createTextElement(text) {
 }
 ```
 
-#### 替换 React.createElement
+### 替换 React.createElement
 为了让这个更像一个框架，我们给它起一个名字，并且替换为我们自己的 `createElement` 方法。
 ```js
 const Didact = {
@@ -218,7 +218,7 @@ ReactDOM.render(element, container);
 > check tag: 1.0-create-our-won-element
 
 
-#### 配置 JSX 调用我们的 createElement
+### 配置 JSX 调用我们的 createElement
 替换
 ```js
 const element = /*#__PURE__*/Didact.createElement("div", {
@@ -242,7 +242,7 @@ const element = (
 
 > check tag: 1.1-jsx-config
 
-#### 重写 `Render` 方法
+### 重写 `Render` 方法
 到目前为止项目是无法运行的，错误在上面有。
 
 ```js
@@ -276,4 +276,37 @@ const Didact = {
 替换 `React.render(element, container);` 为 `Didact.render(element, container);`。
 
 这时候需要在 `index.js` 文件的 `import xxxxx` 之前加入 `/** @jsxRuntime classic */`。 
+> `@jsxRuntime classic` 解释:  
+> https://blog.csdn.net/qq_41801117/article/details/119464218
 重新运行代码，能够看到形同的输出
+
+
+> check tag: 1.2-create-our-own-render-method
+
+### 并发渲染
+目前代码是能够运行，但是有一个问题，每次渲染开始后必须渲染完所有的节点后，才会让出主线程的控制权。如果这时候有一些高优先级的任务需要执行，必须等待渲染完成。
+
+我们可以利用 `requestIdleCallback` 方法，每隔一段时间把CPU的控制权还给浏览器，需要实现这个方式，需要将渲染任务拆成许多的子任务。
+
+```js
+// 需要执行的任务
+let nextUnitWOfWork = null;
+
+// 执行任务的循环 每一次调用的时候设置 执行时间
+function workLoop(deadline) {
+  let shouldYield = false
+  while (nextUnitWOfWork && !shouldYield) {
+    nextUnitWOfWork = performUnitOfWork(nextUnitWOfWork)
+    shouldYield = deadline.timeRemaining() < 1
+  }
+  requestIdleCallback(workLoop)
+}
+
+// 在主线程空闲的时候 回调我们传入的方法
+requestIdleCallback(workLoop)
+
+// 执行一个任务 并且返回后续需要执行的任务
+function performUnitOfWork(nextUnitOfWork) {
+
+}
+```

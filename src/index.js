@@ -26,7 +26,7 @@ function createTextElement(text) {
 
 function render(element, container) {
   // 根据配置创建 HTML node, 如果 type 是 TEXT_ELEMENT 需要特殊处理
-  const dom = element.type == "TEXT_ELEMENT" 
+  const dom = element.type === "TEXT_ELEMENT" 
     ? document.createTextNode("")
     : document.createElement(element.type)
   
@@ -42,6 +42,27 @@ function render(element, container) {
 
   // 将创建的 node 添加到 container node 上
   container.appendChild(dom)
+}
+
+// 需要执行的任务
+let nextUnitWOfWork = null;
+
+// 执行任务的循环 每一次调用的时候设置 执行时间
+function workLoop(deadline) {
+  let shouldYield = false
+  while (nextUnitWOfWork && !shouldYield) {
+    nextUnitWOfWork = performUnitOfWork(nextUnitWOfWork)
+    shouldYield = deadline.timeRemaining() < 1
+  }
+  requestIdleCallback(workLoop)
+}
+
+// 在主线程空闲的时候 回调我们传入的方法
+requestIdleCallback(workLoop)
+
+// 执行一个任务 并且返回后续需要执行的任务
+function performUnitOfWork(nextUnitOfWork) {
+
 }
 
 const Didact = {
