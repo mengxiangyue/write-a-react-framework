@@ -215,3 +215,27 @@ const element = /*#__PURE__*/Didact.createElement("div", {
 const container = document.getElementById("root");
 ReactDOM.render(element, container);
 ```
+> check tag: 1.0-create-our-won-element
+
+
+#### 配置 JSX 调用我们的 createElement
+替换
+```js
+const element = /*#__PURE__*/Didact.createElement("div", {
+  id: "foo",
+  className: "title"
+}, /*#__PURE__*/Didact.createElement("a", null, "bar"), /*#__PURE__*/Didact.createElement("b", null));
+```
+为：
+```js
+/** @jsx Didact.createElement */
+const element = (
+  <div id="foo">
+    <a>bar</a>
+    <b />
+  </div>
+)
+```
+> `@jsx Didact.createElement` 告诉 babel 使用 `Didact.createElement` 转换 JSX
+
+运行 `./node_modules/.bin/babel src --out-dir lib`, 然后查看 `lib/index.js` 能够发现已经调用了我们写的方法了
